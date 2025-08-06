@@ -1,17 +1,20 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User, BookOpen, Settings, Info, Trash2, ChartBar as BarChart3 } from 'lucide-react-native';
+import { User, BookOpen, Settings, Info, Trash2, ChartBar as BarChart3, Camera, Edit3, Check, X } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import { useEstuday } from '@/contexts/StudayContext';
 
 export default function ProfileScreen() {
-  const { state, dispatch } = useEstuday();
+  const { state, dispatch, updateProfile } = useEstuday();
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState(state.userProfile.nome);
 
   const handleClearData = () => {
     Alert.alert(
       'Limpar todos os dados',
-      'Esta ação irá remover todos os seus compromissos e anotações. Esta ação não pode ser desfeita.',
+      'Esta ação irá remover todos os seus compromissos, anotações e dados do perfil (nome e foto). Esta ação não pode ser desfeita.',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -19,19 +22,148 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              // Limpar todos os dados do AsyncStorage, incluindo o perfil
               await AsyncStorage.multiRemove([
                 '@estuday:compromissos',
                 '@estuday:anotacoes',
+                '@estuday:userProfile',
               ]);
-              dispatch({ type: 'LOAD_DATA', payload: { compromissos: [], anotacoes: [] } });
-              Alert.alert('Sucesso', 'Todos os dados foram removidos.');
+              
+              // Resetar o estado para os valores padrão
+              const defaultProfile = {
+                nome: 'Estudante',
+                fotoUri: undefined,
+                isCustomized: false,
+              };
+              
+              dispatch({ 
+                type: 'LOAD_DATA', 
+                payload: { 
+                  compromissos: [], 
+                  anotacoes: [], 
+                  userProfile: defaultProfile
+                } 
+              });
+              
+              // Resetar o estado local de edição
+              setTempName(defaultProfile.nome);
+              setIsEditingName(false);
+              
+              Alert.alert('Sucesso', 'Todos os dados foram removidos, incluindo nome e foto do perfil.');
             } catch (error) {
+              console.error('Erro ao limpar dados:', error);
               Alert.alert('Erro', 'Erro ao limpar os dados. Tente novamente.');
             }
           },
         },
       ]
     );
+  };
+
+  const handleImagePicker = () => {
+    Alert.alert(
+      'Escolher foto',
+      'Selecione uma opção',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Câmera', onPress: () => openImagePicker('camera') },
+        { text: 'Galeria', onPress: () => openImagePicker('library') },
+        ...(state.userProfile.fotoUri ? [{ text: 'Remover foto', style: 'destructive', onPress: removeProfileImage }] : []),
+      ]
+    );
+  };
+
+  const openImagePicker = async (source: 'camera' | 'library') => {
+    try {
+      let result;
+      
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Erro', 'Permissão de câmera é necessária!');
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Erro', 'Permissão de galeria é necessária!');
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
+      }
+
+      if (!result.canceled && result.assets[0]) {
+        const newProfile = {
+          ...state.userProfile,
+          fotoUri: result.assets[0].uri,
+          isCustomized: true, // Importante: sempre marcar como customizado quando adiciona foto
+        };
+        await updateProfile(newProfile);
+        Alert.alert('Sucesso', 'Foto de perfil atualizada!');
+      }
+    } catch (error) {
+      console.error('Erro ao selecionar imagem:', error);
+      Alert.alert('Erro', 'Erro ao selecionar imagem. Tente novamente.');
+    }
+  };
+
+  const removeProfileImage = async () => {
+    try {
+      // Verificar se ainda deve ser considerado customizado (se o nome não é o padrão)
+      const isNameCustomized = state.userProfile.nome.trim() !== 'Estudante';
+      
+      const newProfile = {
+        ...state.userProfile,
+        fotoUri: undefined,
+        isCustomized: isNameCustomized, // Manter customizado se o nome foi alterado
+      };
+      await updateProfile(newProfile);
+      Alert.alert('Sucesso', 'Foto de perfil removida!');
+    } catch (error) {
+      console.error('Erro ao remover imagem:', error);
+      Alert.alert('Erro', 'Erro ao remover imagem. Tente novamente.');
+    }
+  };
+
+  const handleSaveName = async () => {
+    if (tempName.trim().length === 0) {
+      Alert.alert('Erro', 'O nome não pode estar vazio.');
+      return;
+    }
+
+    try {
+      // Verificar se deve ser considerado customizado
+      const isNameCustomized = tempName.trim() !== 'Estudante';
+      const hasCustomPhoto = !!state.userProfile.fotoUri;
+      
+      const newProfile = {
+        ...state.userProfile,
+        nome: tempName.trim(),
+        isCustomized: isNameCustomized || hasCustomPhoto,
+      };
+      await updateProfile(newProfile);
+      setIsEditingName(false);
+      Alert.alert('Sucesso', 'Nome atualizado!');
+    } catch (error) {
+      console.error('Erro ao salvar nome:', error);
+      Alert.alert('Erro', 'Erro ao salvar nome. Tente novamente.');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setTempName(state.userProfile.nome);
+    setIsEditingName(false);
   };
 
   const stats = {
@@ -49,11 +181,50 @@ export default function ProfileScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.profileSection}>
-            <View style={styles.avatar}>
-              <User size={40} color="#3B82F6" />
-            </View>
+            <TouchableOpacity style={styles.avatarContainer} onPress={handleImagePicker}>
+              {state.userProfile.fotoUri ? (
+                <Image source={{ uri: state.userProfile.fotoUri }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <User size={40} color="#3B82F6" />
+                </View>
+              )}
+              <View style={styles.cameraIcon}>
+                <Camera size={16} color="#fff" />
+              </View>
+            </TouchableOpacity>
+            
             <View style={styles.profileInfo}>
-              <Text style={styles.profileName}>Estudante</Text>
+              {isEditingName ? (
+                <View style={styles.editNameContainer}>
+                  <TextInput
+                    style={styles.nameInput}
+                    value={tempName}
+                    onChangeText={setTempName}
+                    placeholder="Digite seu nome"
+                    maxLength={30}
+                    autoFocus
+                  />
+                  <View style={styles.editButtons}>
+                    <TouchableOpacity style={styles.saveButton} onPress={handleSaveName}>
+                      <Check size={16} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.cancelButton} onPress={handleCancelEdit}>
+                      <X size={16} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.nameContainer}>
+                  <Text style={styles.profileName}>{state.userProfile.nome}</Text>
+                  <TouchableOpacity 
+                    style={styles.editNameButton} 
+                    onPress={() => setIsEditingName(true)}
+                  >
+                    <Edit3 size={16} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
+              )}
               <Text style={styles.profileSubtitle}>Usuário do Estuday</Text>
             </View>
           </View>
@@ -132,7 +303,7 @@ export default function ProfileScreen() {
         {/* Rodapé */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            Desenvolvido com ❤️ para estudantes
+            Desenvolvido especialmente para estudantes
           </Text>
         </View>
       </ScrollView>
@@ -157,7 +328,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
   },
+  avatarContainer: {
+    position: 'relative',
+  },
   avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+  },
+  avatarPlaceholder: {
     width: 80,
     height: 80,
     borderRadius: 40,
@@ -165,14 +344,61 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  cameraIcon: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#3B82F6',
+    padding: 6,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
   profileInfo: {
     flex: 1,
+  },
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
   },
   profileName: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#1E293B',
+  },
+  editNameButton: {
+    padding: 4,
+  },
+  editNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 4,
+  },
+  nameInput: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1E293B',
+    borderBottomWidth: 2,
+    borderBottomColor: '#3B82F6',
+    paddingVertical: 4,
+  },
+  editButtons: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  saveButton: {
+    backgroundColor: '#10B981',
+    padding: 6,
+    borderRadius: 6,
+  },
+  cancelButton: {
+    backgroundColor: '#EF4444',
+    padding: 6,
+    borderRadius: 6,
   },
   profileSubtitle: {
     fontSize: 16,

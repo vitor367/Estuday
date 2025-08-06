@@ -8,34 +8,45 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, Filter, Calendar as CalendarIcon, FileText, Clock } from 'lucide-react-native';
+import { Plus, Calendar as CalendarIcon } from 'lucide-react-native';
 import { useEstuday, Compromisso } from '@/contexts/StudayContext';
 import { CompromissoCard } from '@/components/CompromissoCard/CompromissoCard';
 import { CompromissoModal } from '@/components/CompromissoModal/CompromissoModal';
-import { isFutureDate } from '@/utils/dateUtils';
+import { formatDate } from '@/utils/dateUtils';
+import { colors } from '@/components/theme/colors';
 
-type FilterType = 'todos' | 'pendentes' | 'concluidos' | 'hoje';
-type TabType = 'compromissos' | 'anotacoes';
+type FilterType = 'todos' | 'pendentes' | 'realizar' | 'concluidos' | 'hoje';
 
 export default function CompromissosScreen() {
-  const { state, updateCompromisso, deleteCompromisso, deleteAnotacao } = useEstuday();
+  const { state, updateCompromisso, deleteCompromisso } = useEstuday();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingCompromisso, setEditingCompromisso] = useState<Compromisso | null>(null);
-  const [filter, setFilter] = useState<FilterType>('pendentes');
-  const [activeTab, setActiveTab] = useState<TabType>('compromissos');
+  const [filter, setFilter] = useState<FilterType>('realizar');
+
+  // Função para verificar se um compromisso está atrasado
+  const isOverdue = (compromisso: Compromisso): boolean => {
+    const now = new Date();
+    const compromissoDateTime = new Date(`${compromisso.data}T${compromisso.hora}`);
+    return compromissoDateTime < now;
+  };
 
   const filteredCompromissos = useMemo(() => {
     let filtered = state.compromissos;
 
     switch (filter) {
       case 'pendentes':
-        filtered = filtered.filter(c => isFutureDate(c.data) && !c.concluido);
+        // Mostrar apenas compromissos atrasados (data/hora já passou) E não concluídos
+        filtered = filtered.filter(c => !c.concluido && isOverdue(c));
+        break;
+      case 'realizar':
+        // Mostrar todos os não concluídos (antigo "pendentes")
+        filtered = filtered.filter(c => !c.concluido);
         break;
       case 'concluidos':
         filtered = filtered.filter(c => c.concluido);
         break;
       case 'hoje':
-        const today = new Date().toISOString().split('T')[0];
+        const today = formatDate(new Date());
         filtered = filtered.filter(c => c.data === today);
         break;
       default:
@@ -48,12 +59,6 @@ export default function CompromissosScreen() {
       return dateA.getTime() - dateB.getTime();
     });
   }, [state.compromissos, filter]);
-
-  const filteredAnotacoes = useMemo(() => {
-    return state.anotacoes.sort((a, b) => {
-      return new Date(b.data).getTime() - new Date(a.data).getTime();
-    });
-  }, [state.anotacoes]);
 
   const handleAddCompromisso = () => {
     setEditingCompromisso(null);
@@ -80,21 +85,6 @@ export default function CompromissosScreen() {
     );
   };
 
-  const handleDeleteAnotacao = (id: string, texto: string) => {
-    Alert.alert(
-      'Confirmar exclusão',
-      `Tem certeza que deseja excluir esta anotação?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir',
-          style: 'destructive',
-          onPress: () => deleteAnotacao(id),
-        },
-      ]
-    );
-  };
-
   const handleToggleComplete = (compromisso: Compromisso) => {
     updateCompromisso({
       ...compromisso,
@@ -113,6 +103,7 @@ export default function CompromissosScreen() {
 
   const filterButtons = [
     { key: 'pendentes', label: 'Pendentes' },
+    { key: 'realizar', label: 'Realizar' },
     { key: 'hoje', label: 'Hoje' },
     { key: 'concluidos', label: 'Concluídos' },
     { key: 'todos', label: 'Todos' },
@@ -123,125 +114,70 @@ export default function CompromissosScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <CalendarIcon size={24} color="#3B82F6" />
+          <CalendarIcon size={24} color={colors.primary} />
           <Text style={styles.headerTitle}>Compromissos</Text>
         </View>
-        {activeTab === 'compromissos' && (
-          <TouchableOpacity onPress={handleAddCompromisso} style={styles.addButton}>
-            <Plus size={20} color="#fff" />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Abas */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'compromissos' && styles.activeTab]}
-          onPress={() => setActiveTab('compromissos')}
-        >
-          <Clock size={16} color={activeTab === 'compromissos' ? '#3B82F6' : '#64748B'} />
-          <Text style={[styles.tabText, activeTab === 'compromissos' && styles.activeTabText]}>
-            Compromissos
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'anotacoes' && styles.activeTab]}
-          onPress={() => setActiveTab('anotacoes')}
-        >
-          <FileText size={16} color={activeTab === 'anotacoes' ? '#3B82F6' : '#64748B'} />
-          <Text style={[styles.tabText, activeTab === 'anotacoes' && styles.activeTabText]}>
-            Anotações
-          </Text>
+        <TouchableOpacity onPress={handleAddCompromisso} style={styles.addButton}>
+          <Plus size={20} color={colors.text.white} />
         </TouchableOpacity>
       </View>
 
-      {/* Filtros - apenas para compromissos */}
-      {activeTab === 'compromissos' && (
-        <View style={styles.filterContainer}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterContent}
-          >
-            {filterButtons.map((item) => (
-              <TouchableOpacity
-                key={item.key}
-                onPress={() => setFilter(item.key)}
+      {/* Filtros */}
+      <View style={styles.filterContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterContent}
+        >
+          {filterButtons.map((item) => (
+            <TouchableOpacity
+              key={item.key}
+              onPress={() => setFilter(item.key)}
+              style={[
+                styles.filterButton,
+                filter === item.key && styles.filterButtonActive,
+              ]}
+            >
+              <Text
                 style={[
-                  styles.filterButton,
-                  filter === item.key && styles.filterButtonActive,
+                  styles.filterButtonText,
+                  filter === item.key && styles.filterButtonTextActive,
                 ]}
               >
-                <Text
-                  style={[
-                    styles.filterButtonText,
-                    filter === item.key && styles.filterButtonTextActive,
-                  ]}
-                >
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
       {/* Conteúdo */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {activeTab === 'compromissos' ? (
-          // Lista de compromissos
-          filteredCompromissos.length > 0 ? (
-            filteredCompromissos.map((compromisso) => (
-              <CompromissoCard
-                key={compromisso.id}
-                compromisso={compromisso}
-                onEdit={() => handleEditCompromisso(compromisso)}
-                onDelete={() => handleDeleteCompromisso(compromisso)}
-                onToggleComplete={() => handleToggleComplete(compromisso)}
-              />
-            ))
-          ) : (
-            <View style={styles.emptyState}>
-              <CalendarIcon size={64} color="#CBD5E1" />
-              <Text style={styles.emptyText}>
-                {filter === 'pendentes' && 'Nenhum compromisso pendente'}
-                {filter === 'hoje' && 'Nenhum compromisso para hoje'}
-                {filter === 'concluidos' && 'Nenhum compromisso concluído'}
-                {filter === 'todos' && 'Nenhum compromisso cadastrado'}
-              </Text>
-              <TouchableOpacity onPress={handleAddCompromisso} style={styles.emptyButton}>
-                <Text style={styles.emptyButtonText}>Adicionar compromisso</Text>
-              </TouchableOpacity>
-            </View>
-          )
+        {filteredCompromissos.length > 0 ? (
+          filteredCompromissos.map((compromisso) => (
+            <CompromissoCard
+              key={compromisso.id}
+              compromisso={compromisso}
+              onEdit={() => handleEditCompromisso(compromisso)}
+              onDelete={() => handleDeleteCompromisso(compromisso)}
+              onToggleComplete={() => handleToggleComplete(compromisso)}
+              variant="compromisso"
+            />
+          ))
         ) : (
-          // Lista de anotações
-          filteredAnotacoes.length > 0 ? (
-            filteredAnotacoes.map((anotacao) => (
-              <View key={anotacao.id} style={styles.anotacaoCard}>
-                <View style={styles.anotacaoHeader}>
-                  <Text style={styles.anotacaoData}>
-                    {new Date(anotacao.data + 'T00:00:00').toLocaleDateString('pt-BR')}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => handleDeleteAnotacao(anotacao.id, anotacao.texto)}
-                    style={styles.deleteButton}
-                  >
-                    <Text style={styles.deleteButtonText}>Excluir</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.anotacaoTexto}>{anotacao.texto}</Text>
-              </View>
-            ))
-          ) : (
-            <View style={styles.emptyState}>
-              <FileText size={64} color="#CBD5E1" />
-              <Text style={styles.emptyText}>Nenhuma anotação encontrada</Text>
-              <Text style={styles.emptySubtext}>
-                Adicione anotações através do calendário
-              </Text>
-            </View>
-          )
+          <View style={styles.emptyState}>
+            <CalendarIcon size={64} color={colors.border.medium} />
+            <Text style={styles.emptyText}>
+              {filter === 'pendentes' && 'Nenhum compromisso pendente'}
+              {filter === 'realizar' && 'Nenhum compromisso para realizar'}
+              {filter === 'hoje' && 'Nenhum compromisso para hoje'}
+              {filter === 'concluidos' && 'Nenhum compromisso concluído'}
+              {filter === 'todos' && 'Nenhum compromisso cadastrado'}
+            </Text>
+            <TouchableOpacity onPress={handleAddCompromisso} style={styles.emptyButton}>
+              <Text style={styles.emptyButtonText}>Adicionar compromisso</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </ScrollView>
 
@@ -259,7 +195,7 @@ export default function CompromissosScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background.secondary,
   },
   header: {
     flexDirection: 'row',
@@ -267,9 +203,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background.primary,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: colors.border.light,
   },
   headerContent: {
     flexDirection: 'row',
@@ -279,47 +215,20 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   addButton: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: colors.primary,
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 8,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  activeTab: {
-    borderBottomColor: '#3B82F6',
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  activeTabText: {
-    color: '#3B82F6',
-  },
   filterContainer: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.background.primary,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: colors.border.light,
   },
   filterContent: {
     paddingHorizontal: 20,
@@ -330,19 +239,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.background.tertiary,
     marginRight: 8,
   },
   filterButtonActive: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: colors.primary,
   },
   filterButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.secondary,
   },
   filterButtonTextActive: {
-    color: '#fff',
+    color: colors.text.white,
   },
   content: {
     flex: 1,
@@ -357,64 +266,20 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 18,
-    color: '#64748B',
-    textAlign: 'center',
-    maxWidth: 250,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#94A3B8',
+    color: colors.text.secondary,
     textAlign: 'center',
     maxWidth: 250,
   },
   emptyButton: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: colors.primary,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
     marginTop: 8,
   },
   emptyButtonText: {
-    color: '#fff',
+    color: colors.text.white,
     fontWeight: '600',
     fontSize: 16,
-  },
-  anotacaoCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  anotacaoHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  anotacaoData: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#3B82F6',
-  },
-  deleteButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: '#FEF2F2',
-  },
-  deleteButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#EF4444',
-  },
-  anotacaoTexto: {
-    fontSize: 16,
-    color: '#1E293B',
-    lineHeight: 20,
   },
 });

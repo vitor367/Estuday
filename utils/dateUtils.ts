@@ -1,5 +1,8 @@
 export const formatDate = (date: Date): string => {
-  return date.toISOString().split('T')[0];
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 export const formatDateBR = (dateString: string): string => {
@@ -21,6 +24,12 @@ export const formatTime = (timeString: string): string => {
   return timeString;
 };
 
+export const formatTimeFromDate = (date: Date): string => {
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
 export const isToday = (dateString: string): boolean => {
   const today = formatDate(new Date());
   return dateString === today;
@@ -29,6 +38,34 @@ export const isToday = (dateString: string): boolean => {
 export const isFutureDate = (dateString: string): boolean => {
   const today = formatDate(new Date());
   return dateString >= today;
+};
+
+export const isExpired = (dateString: string, timeString: string): boolean => {
+  const now = new Date();
+  
+  // Verificar se timeString é válido
+  if (!timeString || !timeString.includes(':')) {
+    return false;
+  }
+  
+  // Parse da data e hora de forma mais robusta
+  const [year, month, day] = dateString.split('-').map(Number);
+  const [hour, minute] = timeString.split(':').map(Number);
+  
+  // Verificar se todos os valores são números válidos
+  if (isNaN(year) || isNaN(month) || isNaN(day) || isNaN(hour) || isNaN(minute)) {
+    return false;
+  }
+  
+  // Criar data do compromisso usando fuso horário local
+  const compromissoDateTime = new Date(year, month - 1, day, hour, minute);
+  
+  // Verificar se a data foi criada corretamente
+  if (isNaN(compromissoDateTime.getTime())) {
+    return false;
+  }
+  
+  return compromissoDateTime < now;
 };
 
 export const getMonthName = (monthIndex: number): string => {
@@ -44,7 +81,6 @@ export const getDaysInMonth = (year: number, month: number): number => {
 };
 
 export const getFirstDayOfMonth = (year: number, month: number): number => {
-  // Retorna o dia da semana (0 = domingo, 1 = segunda, etc.)
   return new Date(year, month, 1).getDay();
 };
 
@@ -58,10 +94,7 @@ export const getWeekDays = (): string[] => {
 };
 
 export const applyDateMask = (value: string): string => {
-  // Remove tudo que não é número
   const numbers = value.replace(/\D/g, '');
-  
-  // Aplica a máscara dd/mm/yyyy
   if (numbers.length <= 2) {
     return numbers;
   } else if (numbers.length <= 4) {
@@ -73,10 +106,8 @@ export const applyDateMask = (value: string): string => {
 
 export const isValidDate = (dateString: string): boolean => {
   if (dateString.length !== 10) return false;
-  
   const [day, month, year] = dateString.split('/');
   const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-  
   return date.getDate() === parseInt(day) &&
          date.getMonth() === parseInt(month) - 1 &&
          date.getFullYear() === parseInt(year);

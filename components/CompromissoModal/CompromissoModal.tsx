@@ -8,11 +8,15 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  Platform,
 } from 'react-native';
-import { X, Clock, Tag } from 'lucide-react-native';
+import { X, Tag } from 'lucide-react-native';
 import { useEstuday, Compromisso } from '@/contexts/StudayContext';
-import { formatDate } from '@/utils/dateUtils';
+import { NotificationSelector, MultipleNotificationConfig, DEFAULT_NEW_CONFIG } from '@/components/NotificationSelector/NotificationSelector';
+import { formatDate, formatTimeFromDate } from '@/utils/dateUtils';
 import { DatePicker } from '@/components/DatePicker/DatePicker';
+import { colors } from '@/components/theme/colors';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface CompromissoModalProps {
   visible: boolean;
@@ -22,39 +26,85 @@ interface CompromissoModalProps {
 }
 
 const categorias = [
-  { value: 'aula', label: 'Aula', color: '#3B82F6' },
-  { value: 'prova', label: 'Prova', color: '#EF4444' },
-  { value: 'trabalho', label: 'Trabalho', color: '#F97316' },
-  { value: 'outro', label: 'Outro', color: '#8B5CF6' },
+  { value: 'aula', label: 'Aula', color: colors.category.aula },
+  { value: 'prova', label: 'Prova', color: colors.category.prova },
+  { value: 'trabalho', label: 'Trabalho', color: colors.category.trabalho },
+  { value: 'outro', label: 'Outro', color: colors.category.outro },
 ] as const;
 
 export function CompromissoModal({ visible, compromisso, onClose, onSave }: CompromissoModalProps) {
   const { addCompromisso, updateCompromisso } = useEstuday();
+  
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
-  const [data, setData] = useState('');
-  const [hora, setHora] = useState('');
+  const [data, setData] = useState(() => formatDate(new Date())); // Usar formatDate mantendo seu formato
+  const [hora, setHora] = useState('23:59');
   const [categoria, setCategoria] = useState<'aula' | 'prova' | 'trabalho' | 'outro'>('aula');
+  const [notificationConfig, setNotificationConfig] = useState<MultipleNotificationConfig>(DEFAULT_NEW_CONFIG);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [tempTime, setTempTime] = useState<Date>(new Date());
 
   const isEditing = !!compromisso;
 
+  // Função para converter notificationConfig antiga para nova estrutura
+  const convertToMultipleNotificationConfig = (compromisso: Compromisso): MultipleNotificationConfig => {
+    // Se já tem a nova estrutura
+    if (compromisso.multipleNotificationConfig) {
+      return compromisso.multipleNotificationConfig;
+    }
+    
+    // Se tem a estrutura antiga
+    if (compromisso.notificationConfig) {
+      return {
+        notifications: compromisso.notificationConfig.enabled 
+          ? [compromisso.notificationConfig]
+          : []
+      };
+    }
+    
+    // Padrão para compromissos existentes sem configuração (vazio para não alterar)
+    return { notifications: [] };
+  };
+
   useEffect(() => {
-    if (compromisso) {
-      setTitulo(compromisso.titulo);
-      setDescricao(compromisso.descricao);
-      setData(compromisso.data);
-      setHora(compromisso.hora);
-      setCategoria(compromisso.categoria);
-    } else {
-      // Reset para novo compromisso
-      setTitulo('');
-      setDescricao('');
-      setData(formatDate(new Date()));
-      setHora('08:00');
-      setCategoria('aula');
+    if (visible) {
+      if (compromisso) {
+        // Editando compromisso existente - manter configurações atuais
+        setTitulo(compromisso.titulo);
+        setDescricao(compromisso.descricao);
+        setData(compromisso.data);
+        setHora(compromisso.hora || '23:59');
+        setCategoria(compromisso.categoria);
+        
+        // Configurar notificação usando a estrutura existente (sem forçar padrão)
+        setNotificationConfig(convertToMultipleNotificationConfig(compromisso));
+        
+        // Configurar tempTime com base na hora do compromisso
+        const [hours, minutes] = (compromisso.hora || '23:59').split(':').map(Number);
+        const time = new Date();
+        time.setHours(hours);
+        time.setMinutes(minutes);
+        time.setSeconds(0);
+        setTempTime(time);
+      } else {
+        // Novo compromisso - usar valores padrão SEMPRE usando formatDate
+        setTitulo('');
+        setDescricao('');
+        setData(formatDate(new Date())); // Manter o formato original
+        setHora('23:59');
+        setCategoria('aula');
+        setNotificationConfig(DEFAULT_NEW_CONFIG); // Apenas para novos compromissos
+        
+        // Configurar tempTime padrão (23:59)
+        const defaultTime = new Date();
+        defaultTime.setHours(23);
+        defaultTime.setMinutes(59);
+        defaultTime.setSeconds(0);
+        setTempTime(defaultTime);
+      }
     }
   }, [compromisso, visible]);
-
+  
   const handleSave = async () => {
     if (!titulo.trim()) {
       Alert.alert('Erro', 'Por favor, digite um título para o compromisso.');
@@ -72,6 +122,11 @@ export function CompromissoModal({ visible, compromisso, onClose, onSave }: Comp
     }
 
     try {
+      // Criar configuração compatível com a estrutura antiga
+      const legacyNotificationConfig = notificationConfig.notifications.length > 0 
+        ? notificationConfig.notifications[0] // Usar a primeira notificação para compatibilidade
+        : { enabled: false, tempo: 0, unidade: 'minutos' as const };
+
       const compromissoData = {
         titulo: titulo.trim(),
         descricao: descricao.trim(),
@@ -79,6 +134,8 @@ export function CompromissoModal({ visible, compromisso, onClose, onSave }: Comp
         hora,
         categoria,
         concluido: compromisso?.concluido || false,
+        notificationConfig: legacyNotificationConfig, // Para compatibilidade com o contexto atual
+        multipleNotificationConfig: notificationConfig, // Nova estrutura
       };
 
       if (isEditing && compromisso) {
@@ -94,12 +151,142 @@ export function CompromissoModal({ visible, compromisso, onClose, onSave }: Comp
       onSave();
       onClose();
     } catch (error) {
-      Alert.alert('Erro', 'Erro ao salvar compromisso. Tente novamente.');
+      console.error('Erro ao salvar compromisso:', error);
+      Alert.alert('Erro', 'Não foi possível salvar o compromisso. Tente novamente.');
     }
   };
 
-  const getCategoriaColor = (cat: string) => {
-    return categorias.find(c => c.value === cat)?.color || '#64748B';
+  const openTimePicker = () => {
+    // Configurar tempTime com a hora atual antes de abrir o picker
+    const [hours, minutes] = hora.split(':').map(Number);
+    const time = new Date();
+    time.setHours(hours);
+    time.setMinutes(minutes);
+    time.setSeconds(0);
+    setTempTime(time);
+    setShowTimePicker(true);
+  };
+
+  const handleTimeChange = (event: any, selectedTime?: Date) => {
+    if (Platform.OS === 'android') {
+      // No Android, fechar o picker e atualizar a hora
+      setShowTimePicker(false);
+      if (selectedTime && event.type !== 'dismissed') {
+        const timeString = formatTimeFromDate(selectedTime);
+        setHora(timeString);
+        setTempTime(selectedTime);
+      }
+    } else if (Platform.OS === 'ios') {
+      // No iOS, apenas atualizar tempTime
+      if (selectedTime) {
+        setTempTime(selectedTime);
+      }
+    }
+    // Para web, o onChange é tratado diretamente no input HTML
+  };
+
+  const handleTimeSave = () => {
+    // Aplicar a hora selecionada (para iOS e Web)
+    if (Platform.OS !== 'android') {
+      const timeString = formatTimeFromDate(tempTime);
+      setHora(timeString);
+    }
+    setShowTimePicker(false);
+  };
+
+  const handleTimeCancel = () => {
+    // Reverter para a hora original
+    const [hours, minutes] = hora.split(':').map(Number);
+    const originalTime = new Date();
+    originalTime.setHours(hours);
+    originalTime.setMinutes(minutes);
+    originalTime.setSeconds(0);
+    setTempTime(originalTime);
+    setShowTimePicker(false);
+  };
+
+  const renderCleanTimePicker = () => {
+    if (Platform.OS === 'android') {
+      // Android usa o picker nativo
+      return (
+        <DateTimePicker
+          value={tempTime}
+          mode="time"
+          is24Hour={true}
+          display="default"
+          onChange={handleTimeChange}
+        />
+      );
+    } else {
+      // iOS e Web usam interface clean personalizada
+      return (
+        <Modal
+          visible={showTimePicker}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={handleTimeCancel}
+        >
+          <View style={styles.cleanTimeModal}>
+            {/* Header minimalista */}
+            <View style={styles.cleanTimeHeader}>
+              <TouchableOpacity onPress={handleTimeCancel}>
+                <Text style={styles.cancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <Text style={styles.cleanTimeTitle}>Selecionar Horário</Text>
+              <TouchableOpacity onPress={handleTimeSave}>
+                <Text style={styles.saveText}>Salvar</Text>
+              </TouchableOpacity>
+            </View>
+            
+            {/* Container do picker com fundo clean */}
+            <View style={styles.cleanPickerContainer}>
+              {Platform.OS === 'web' ? (
+                <View style={styles.webTimeContainer}>
+                  <Text style={styles.selectTimeTitle}>Selecionar Horário</Text>
+                  <View style={styles.webTimeInput}>
+                    <input
+                      type="time"
+                      value={hora}
+                      onChange={(e) => {
+                        const newTime = e.target.value;
+                        if (newTime) {
+                          setHora(newTime);
+                          // Atualizar tempTime também
+                          const [hours, minutes] = newTime.split(':').map(Number);
+                          const time = new Date();
+                          time.setHours(hours);
+                          time.setMinutes(minutes);
+                          time.setSeconds(0);
+                          setTempTime(time);
+                        }
+                      }}
+                      style={styles.webInput}
+                    />
+                  </View>
+                </View>
+              ) : (
+                // iOS com estilo clean
+                <>
+                  <Text style={styles.selectTimeTitle}>Selecionar Horário</Text>
+                  <View style={styles.iosPickerContainer}>
+                    <DateTimePicker
+                      value={tempTime}
+                      mode="time"
+                      is24Hour={true}
+                      display="wheels"
+                      onChange={handleTimeChange}
+                      style={styles.iosPicker}
+                      textColor="#000"
+                      themeVariant="light"
+                    />
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
+      );
+    }
   };
 
   return (
@@ -111,7 +298,7 @@ export function CompromissoModal({ visible, compromisso, onClose, onSave }: Comp
             {isEditing ? 'Editar Compromisso' : 'Novo Compromisso'}
           </Text>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <X size={24} color="#64748B" />
+            <X size={24} color={colors.text.secondary} />
           </TouchableOpacity>
         </View>
 
@@ -124,6 +311,7 @@ export function CompromissoModal({ visible, compromisso, onClose, onSave }: Comp
               value={titulo}
               onChangeText={setTitulo}
               placeholder="Digite o título do compromisso"
+              placeholderTextColor={colors.text.tertiary}
               autoFocus
             />
           </View>
@@ -136,6 +324,7 @@ export function CompromissoModal({ visible, compromisso, onClose, onSave }: Comp
               value={descricao}
               onChangeText={setDescricao}
               placeholder="Digite uma descrição (opcional)"
+              placeholderTextColor={colors.text.tertiary}
               multiline
               numberOfLines={3}
             />
@@ -151,19 +340,20 @@ export function CompromissoModal({ visible, compromisso, onClose, onSave }: Comp
             />
           </View>
 
-          {/* Horário */}
+          {/* Horário - Clique direto para abrir */}
           <View style={styles.field}>
             <Text style={styles.label}>Horário *</Text>
-            <View style={styles.inputWithIcon}>
-              <Clock size={20} color="#64748B" />
-              <TextInput
-                style={styles.inputIcon}
-                value={hora}
-                onChangeText={setHora}
-                placeholder="HH:MM"
-              />
-            </View>
+            <TouchableOpacity style={styles.cleanTimeField} onPress={openTimePicker}>
+              <Text style={styles.cleanTimeText}>{hora}</Text>
+            </TouchableOpacity>
           </View>
+
+          {/* Notificação */}
+          <NotificationSelector
+            value={notificationConfig}
+            onValueChange={setNotificationConfig}
+            label="Notificação"
+          />
 
           {/* Categoria */}
           <View style={styles.field}>
@@ -179,11 +369,11 @@ export function CompromissoModal({ visible, compromisso, onClose, onSave }: Comp
                   ]}
                   onPress={() => setCategoria(cat.value)}
                 >
-                  <Tag size={16} color={categoria === cat.value ? '#fff' : cat.color} />
+                  <Tag size={16} color={categoria === cat.value ? colors.text.white : cat.color} />
                   <Text
                     style={[
                       styles.categoriaText,
-                      { color: categoria === cat.value ? '#fff' : cat.color },
+                      { color: categoria === cat.value ? colors.text.white : cat.color },
                     ]}
                   >
                     {cat.label}
@@ -193,6 +383,9 @@ export function CompromissoModal({ visible, compromisso, onClose, onSave }: Comp
             </View>
           </View>
         </ScrollView>
+
+        {/* Time Picker Clean */}
+        {showTimePicker && renderCleanTimePicker()}
 
         {/* Actions */}
         <View style={styles.actions}>
@@ -213,7 +406,7 @@ export function CompromissoModal({ visible, compromisso, onClose, onSave }: Comp
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background.primary,
   },
   header: {
     flexDirection: 'row',
@@ -222,17 +415,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: colors.border.light,
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   closeButton: {
     padding: 8,
     borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.background.tertiary,
   },
   content: {
     flex: 1,
@@ -244,35 +437,37 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1E293B',
+    color: colors.text.primary,
     marginBottom: 8,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border.light,
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
-    color: '#1E293B',
+    color: colors.text.primary,
+    backgroundColor: colors.background.primary,
   },
   textArea: {
     height: 80,
     textAlignVertical: 'top',
   },
-  inputWithIcon: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // Campo de horário clean - sem ícone
+  cleanTimeField: {
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border.light,
     borderRadius: 8,
-    paddingHorizontal: 12,
-    gap: 8,
-  },
-  inputIcon: {
-    flex: 1,
+    paddingHorizontal: 16,
     paddingVertical: 12,
+    minHeight: 48,
+    backgroundColor: colors.background.primary,
+    justifyContent: 'center',
+  },
+  cleanTimeText: {
     fontSize: 16,
-    color: '#1E293B',
+    color: colors.text.primary,
+    textAlign: 'left',
   },
   categoriaGrid: {
     flexDirection: 'row',
@@ -297,31 +492,120 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+    borderTopColor: colors.border.light,
     gap: 12,
   },
   cancelButton: {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.background.tertiary,
     alignItems: 'center',
   },
   cancelButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#64748B',
+    color: colors.text.secondary,
   },
   saveButton: {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 8,
-    backgroundColor: '#3B82F6',
+    backgroundColor: colors.primary,
     alignItems: 'center',
   },
   saveButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.text.white,
+  },
+  
+  // Estilos do Time Picker Clean
+  cleanTimeModal: {
+    flex: 1,
+    backgroundColor: colors.background.secondary,
+  },
+  cleanTimeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: colors.background.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.light,
+  },
+  cancelText: {
+    fontSize: 16,
+    color: colors.text.secondary,
+    fontWeight: '400',
+  },
+  cleanTimeTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  saveText: {
+    fontSize: 16,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  cleanPickerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  selectTimeTitle: {
+    fontSize: 28,
+    fontWeight: '300',
+    color: colors.text.primary,
+    textAlign: 'center',
+    marginBottom: 40,
+  },
+  // Web styles
+  webTimeContainer: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  webTimeInput: {
+    backgroundColor: colors.background.primary,
+    borderRadius: 16,
+    padding: 40,
+    shadowColor: colors.shadow.color,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  webInput: {
+    backgroundColor: 'transparent',
+    border: 'none',
+    fontSize: '32px',
+    fontWeight: '300',
+    color: colors.text.primary,
+    outline: 'none',
+    textAlign: 'center',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    minWidth: '120px',
+    // Customizar o picker nativo do browser para ficar mais clean
+    WebkitAppearance: 'none',
+    MozAppearance: 'textfield',
+  } as any,
+  // iOS styles
+  iosPickerContainer: {
+    backgroundColor: colors.background.primary,
+    borderRadius: 16,
+    marginHorizontal: 20,
+    paddingVertical: 20,
+    shadowColor: colors.shadow.color,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  iosPicker: {
+    height: 200,
+    width: '100%',
   },
 });

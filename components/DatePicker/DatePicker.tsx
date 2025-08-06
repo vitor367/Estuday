@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,34 @@ interface DatePickerProps {
 
 export function DatePicker({ value, onDateChange, placeholder = "dd/mm/yyyy", label }: DatePickerProps) {
   const [modalVisible, setModalVisible] = useState(false);
-  const [inputValue, setInputValue] = useState(value ? formatDateToBR(value) : '');
+  
+  // Função para obter data atual no formato ISO
+  const getCurrentDate = () => {
+    return new Date().toISOString().split('T')[0];
+  };
+
+  // Inicializar inputValue corretamente
+  const [inputValue, setInputValue] = useState(() => {
+    if (value && value !== '') {
+      return formatDateToBR(value);
+    }
+    // Se não há valor, usar data atual
+    const currentDate = getCurrentDate();
+    return formatDateToBR(currentDate);
+  });
+
+  // useEffect para sincronizar com mudanças externas do value
+  useEffect(() => {
+    if (value && value !== '') {
+      setInputValue(formatDateToBR(value));
+    } else {
+      // Se value está vazio, inicializar com data atual
+      const currentDate = getCurrentDate();
+      setInputValue(formatDateToBR(currentDate));
+      // Notificar o componente pai sobre a data atual
+      onDateChange(currentDate);
+    }
+  }, [value, onDateChange]);
 
   const handleInputChange = (text: string) => {
     const maskedText = applyDateMask(text);
@@ -43,6 +70,15 @@ export function DatePicker({ value, onDateChange, placeholder = "dd/mm/yyyy", la
     setModalVisible(true);
   };
 
+  // Função para garantir que sempre temos uma data válida para exibir
+  const getDisplayValue = () => {
+    if (inputValue && inputValue !== placeholder) {
+      return inputValue;
+    }
+    // Fallback para data atual
+    return formatDateToBR(getCurrentDate());
+  };
+
   return (
     <View style={styles.container}>
       {label && <Text style={styles.label}>{label}</Text>}
@@ -54,7 +90,7 @@ export function DatePicker({ value, onDateChange, placeholder = "dd/mm/yyyy", la
         
         <TextInput
           style={styles.input}
-          value={inputValue}
+          value={getDisplayValue()}
           onChangeText={handleInputChange}
           placeholder={placeholder}
           keyboardType="numeric"

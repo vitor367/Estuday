@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BookOpen, Calendar, Clock, CircleCheck as CheckCircle, TrendingUp } from 'lucide-react-native';
-import { useEstuday } from '@/contexts/StudayContext';
+import { BookOpen, Calendar, Clock, CircleCheck as CheckCircle, TrendingUp, User } from 'lucide-react-native';
+import { useEstuday, getGreeting } from '@/contexts/StudayContext';
 import { formatDate, isFutureDate, isToday } from '@/utils/dateUtils';
 import { router } from 'expo-router';
 
@@ -24,13 +24,32 @@ export default function HomeScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>Olá! 👋</Text>
-            <Text style={styles.subtitle}>Como vão os estudos hoje?</Text>
+          <View style={styles.headerContent}>
+            <TouchableOpacity 
+              style={styles.profileImageContainer}
+              onPress={() => router.push('/profile')}
+            >
+              {state.userProfile.fotoUri ? (
+                <Image source={{ uri: state.userProfile.fotoUri }} style={styles.profileImage} />
+              ) : (
+                <View style={styles.profileImagePlaceholder}>
+                  <User size={20} color="#3B82F6" />
+                </View>
+              )}
+            </TouchableOpacity>
+            <View style={styles.greetingContainer}>
+              <Text style={styles.greeting}>
+                {getGreeting(state.userProfile.nome, state.userProfile.isCustomized)}
+              </Text>
+              <Text style={styles.subtitle}>Como vão os estudos hoje?</Text>
+            </View>
           </View>
-          <View style={styles.logoContainer}>
+          <TouchableOpacity 
+            style={styles.logoContainer}
+            onPress={() => router.push('/profile')}
+          >
             <BookOpen size={32} color="#3B82F6" />
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Cards de estatísticas */}
@@ -158,15 +177,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  profileImageContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    overflow: 'hidden',
+  },
+  profileImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 25,
+  },
+  profileImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 25,
+  },
+  greetingContainer: {
+    flex: 1,
+  },
   greeting: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#1E293B',
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#64748B',
-    marginTop: 4,
+    marginTop: 2,
   },
   logoContainer: {
     backgroundColor: '#EFF6FF',
@@ -293,10 +340,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
-  },
-  quickActionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1E293B',
-  },
+  }
 });

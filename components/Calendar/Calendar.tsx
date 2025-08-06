@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useEstuday } from '@/contexts/StudayContext';
 import { getMonthName, getDaysInMonth, getFirstDayOfMonth, createDateString, isToday } from '@/utils/dateUtils';
-import { CalendarDay } from './CalendarDay';
+import { CalendarDay } from '@/components/Calendar/CalendarDay';
 
 interface CalendarProps {
   onDayPress: (date: string) => void;
@@ -29,10 +29,13 @@ export function Calendar({ onDayPress }: CalendarProps) {
     setCurrentDate(new Date(year, month + 1, 1));
   };
 
-  const hasEventsOnDate = (dateString: string) => {
-    const compromissos = state.compromissos.filter(c => c.data === dateString);
-    const anotacoes = state.anotacoes.filter(a => a.data === dateString);
-    return compromissos.length > 0 || anotacoes.length > 0;
+  const getCompromissosForDate = (dateString: string) => {
+    // Filtrar apenas compromissos não concluídos, igual ao DayModal
+    return state.compromissos.filter(c => c.data === dateString && !c.concluido);
+  };
+
+  const getAnotacoesForDate = (dateString: string) => {
+    return state.anotacoes.filter(a => a.data === dateString);
   };
 
   const renderCalendarWeeks = () => {
@@ -72,7 +75,8 @@ export function Calendar({ onDayPress }: CalendarProps) {
           // Dia com conteúdo
           const dateString = createDateString(year, month, day);
           const today = isToday(dateString);
-          const hasEvents = hasEventsOnDate(dateString);
+          const compromissos = getCompromissosForDate(dateString);
+          const anotacoes = getAnotacoesForDate(dateString);
           
           weekDays.push(
             <CalendarDay
@@ -80,7 +84,8 @@ export function Calendar({ onDayPress }: CalendarProps) {
               day={day}
               dateString={dateString}
               isToday={today}
-              hasEvents={hasEvents}
+              compromissos={compromissos}
+              anotacoes={anotacoes}
               onPress={onDayPress}
             />
           );
@@ -126,7 +131,7 @@ export function Calendar({ onDayPress }: CalendarProps) {
         ))}
       </View>
 
-      {/* Grid do calendário - Agora com 6 semanas fixas */}
+      {/* Grid do calendário - Ocupa o espaço restante */}
       <View style={styles.calendarGrid}>
         {renderCalendarWeeks()}
       </View>
@@ -136,21 +141,17 @@ export function Calendar({ onDayPress }: CalendarProps) {
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    margin: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
   },
   navButton: {
     padding: 8,
@@ -164,7 +165,10 @@ const styles = StyleSheet.create({
   },
   weekDaysContainer: {
     flexDirection: 'row',
-    marginBottom: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
   },
   weekDayCell: {
     flex: 1,
@@ -177,15 +181,17 @@ const styles = StyleSheet.create({
     color: '#64748B',
   },
   calendarGrid: {
-    width: '100%',
+    flex: 1,
+    paddingHorizontal: 8,
   },
   weekRow: {
     flexDirection: 'row',
-    width: '100%',
-    height: 50, // Altura fixa para cada linha
+    flex: 1,
   },
   emptyDay: {
-    width: '14.285714%', // 100% / 7 = 14.285714%
-    height: '100%',
+    width: '14.285714%',
+    flex: 1,
   },
 });
+
+export { Calendar };

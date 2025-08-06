@@ -3,6 +3,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
+export interface NotificationConfig {
+  enabled: boolean;
+  tempo: number; // quantidade de tempo
+  unidade: 'minutos' | 'horas' | 'dias'; // unidade de tempo
+}
+
+// Nova interface para múltiplas notificações
+export interface MultipleNotificationConfig {
+  notifications: NotificationConfig[];
+}
+
 export interface Compromisso {
   id: string;
   titulo: string;
@@ -12,6 +23,8 @@ export interface Compromisso {
   categoria: 'aula' | 'prova' | 'trabalho' | 'outro';
   concluido: boolean;
   notificationId?: string;
+  notificationConfig?: NotificationConfig; // Estrutura antiga (compatibilidade)
+  multipleNotificationConfig?: MultipleNotificationConfig; // Nova estrutura
 }
 
 export interface AnotacaoCalendario {
@@ -20,25 +33,38 @@ export interface AnotacaoCalendario {
   texto: string;
 }
 
+export interface UserProfile {
+  nome: string;
+  fotoUri?: string;
+  isCustomized?: boolean; // Nova propriedade para saber se foi personalizado
+}
+
 interface EstudayState {
   compromissos: Compromisso[];
   anotacoes: AnotacaoCalendario[];
+  userProfile: UserProfile;
   loading: boolean;
 }
 
 type EstudayAction =
   | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'LOAD_DATA'; payload: { compromissos: Compromisso[]; anotacoes: AnotacaoCalendario[] } }
+  | { type: 'LOAD_DATA'; payload: { compromissos: Compromisso[]; anotacoes: AnotacaoCalendario[]; userProfile: UserProfile } }
   | { type: 'ADD_COMPROMISSO'; payload: Compromisso }
   | { type: 'UPDATE_COMPROMISSO'; payload: Compromisso }
   | { type: 'DELETE_COMPROMISSO'; payload: string }
   | { type: 'ADD_ANOTACAO'; payload: AnotacaoCalendario }
   | { type: 'UPDATE_ANOTACAO'; payload: AnotacaoCalendario }
-  | { type: 'DELETE_ANOTACAO'; payload: string };
+  | { type: 'DELETE_ANOTACAO'; payload: string }
+  | { type: 'UPDATE_PROFILE'; payload: UserProfile };
 
 const initialState: EstudayState = {
   compromissos: [],
   anotacoes: [],
+  userProfile: {
+    nome: 'Estudante',
+    fotoUri: undefined,
+    isCustomized: false,
+  },
   loading: false,
 };
 
@@ -51,6 +77,72 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// Opções de notificação predefinidas
+export const NOTIFICATION_OPTIONS = [
+  { label: 'Sem notificação', tempo: 0, unidade: 'minutos' as const, enabled: false },
+  { label: '15 minutos antes', tempo: 15, unidade: 'minutos' as const, enabled: true },
+  { label: '30 minutos antes', tempo: 30, unidade: 'minutos' as const, enabled: true },
+  { label: '1 hora antes', tempo: 1, unidade: 'horas' as const, enabled: true },
+  { label: '2 horas antes', tempo: 2, unidade: 'horas' as const, enabled: true },
+  { label: '3 horas antes', tempo: 3, unidade: 'horas' as const, enabled: true },
+  { label: '6 horas antes', tempo: 6, unidade: 'horas' as const, enabled: true },
+  { label: '12 horas antes', tempo: 12, unidade: 'horas' as const, enabled: true },
+  { label: '1 dia antes', tempo: 1, unidade: 'dias' as const, enabled: true },
+  { label: '2 dias antes', tempo: 2, unidade: 'dias' as const, enabled: true },
+  { label: '3 dias antes', tempo: 3, unidade: 'dias' as const, enabled: true },
+  { label: '1 semana antes', tempo: 7, unidade: 'dias' as const, enabled: true },
+];
+
+// Função para converter tempo para milissegundos
+const convertToMilliseconds = (tempo: number, unidade: 'minutos' | 'horas' | 'dias'): number => {
+  switch (unidade) {
+    case 'minutos':
+      return tempo * 60 * 1000;
+    case 'horas':
+      return tempo * 60 * 60 * 1000;
+    case 'dias':
+      return tempo * 24 * 60 * 60 * 1000;
+    default:
+      return 0;
+  }
+};
+
+// Função para obter texto descritivo da notificação
+export const getNotificationText = (config: NotificationConfig): string => {
+  if (!config.enabled) return 'Sem notificação';
+  
+  const option = NOTIFICATION_OPTIONS.find(
+    opt => opt.tempo === config.tempo && opt.unidade === config.unidade && opt.enabled
+  );
+  
+  return option?.label || `${config.tempo} ${config.unidade} antes`;
+};
+
+// Função para obter saudação baseada na hora
+export const getGreeting = (nome: string, isCustomized: boolean = false): string => {
+  const hour = new Date().getHours();
+  
+  // Se não foi customizado, usa a saudação padrão
+  if (!isCustomized) {
+    if (hour >= 5 && hour < 12) {
+      return 'Bom dia, seja bem vindo!';
+    } else if (hour >= 12 && hour < 18) {
+      return 'Boa tarde, seja bem vindo!';
+    } else {
+      return 'Boa noite, seja bem vindo!';
+    }
+  }
+  
+  // Se foi customizado, usa o nome personalizado
+  if (hour >= 5 && hour < 12) {
+    return `Bom dia, ${nome}!`;
+  } else if (hour >= 12 && hour < 18) {
+    return `Boa tarde, ${nome}!`;
+  } else {
+    return `Boa noite, ${nome}!`;
+  }
+};
+
 function estudayReducer(state: EstudayState, action: EstudayAction): EstudayState {
   switch (action.type) {
     case 'SET_LOADING':
@@ -60,6 +152,7 @@ function estudayReducer(state: EstudayState, action: EstudayAction): EstudayStat
         ...state,
         compromissos: action.payload.compromissos,
         anotacoes: action.payload.anotacoes,
+        userProfile: action.payload.userProfile,
         loading: false,
       };
     case 'ADD_COMPROMISSO':
@@ -96,6 +189,11 @@ function estudayReducer(state: EstudayState, action: EstudayAction): EstudayStat
         ...state,
         anotacoes: state.anotacoes.filter(a => a.id !== action.payload),
       };
+    case 'UPDATE_PROFILE':
+      return {
+        ...state,
+        userProfile: action.payload,
+      };
     default:
       return state;
   }
@@ -110,6 +208,7 @@ interface EstudayContextType {
   addAnotacao: (anotacao: Omit<AnotacaoCalendario, 'id'>) => Promise<void>;
   updateAnotacao: (anotacao: AnotacaoCalendario) => Promise<void>;
   deleteAnotacao: (id: string) => Promise<void>;
+  updateProfile: (profile: UserProfile) => Promise<void>;
   getAnotacoesPorData: (data: string) => AnotacaoCalendario[];
   getCompromissosPorData: (data: string) => Compromisso[];
 }
@@ -119,9 +218,10 @@ const EstudayContext = createContext<EstudayContextType | undefined>(undefined);
 const STORAGE_KEYS = {
   COMPROMISSOS: '@estuday:compromissos',
   ANOTACOES: '@estuday:anotacoes',
+  USER_PROFILE: '@estuday:userProfile',
 };
 
-// Função para agendar notificação
+// Função para agendar notificação baseada na estrutura de notificação (antiga ou nova)
 const scheduleNotification = async (compromisso: Omit<Compromisso, 'id' | 'notificationId'>): Promise<string | undefined> => {
   if (Platform.OS === 'web') {
     return undefined;
@@ -133,18 +233,56 @@ const scheduleNotification = async (compromisso: Omit<Compromisso, 'id' | 'notif
       return undefined;
     }
 
+    // Determinar configuração de notificação a usar
+    let notificationConfig: NotificationConfig | null = null;
+
+    // Priorizar nova estrutura (multipleNotificationConfig)
+    if (compromisso.multipleNotificationConfig?.notifications?.length > 0) {
+      notificationConfig = compromisso.multipleNotificationConfig.notifications[0]; // Usar primeira por enquanto
+    }
+    // Fallback para estrutura antiga
+    else if (compromisso.notificationConfig?.enabled) {
+      notificationConfig = compromisso.notificationConfig;
+    }
+
+    // Se não há configuração de notificação válida, não agendar
+    if (!notificationConfig || !notificationConfig.enabled) {
+      return undefined;
+    }
+
     const compromissoDateTime = new Date(`${compromisso.data}T${compromisso.hora}`);
-    const notificationTime = new Date(compromissoDateTime.getTime() - 24 * 60 * 60 * 1000); // 1 dia antes
+    const { tempo, unidade } = notificationConfig;
+    
+    // Calcular tempo de antecedência em milissegundos
+    const antecedenciaMs = convertToMilliseconds(tempo, unidade);
+    const notificationTime = new Date(compromissoDateTime.getTime() - antecedenciaMs);
 
     if (notificationTime <= new Date()) {
       return undefined; // Não agendar se a data já passou
     }
 
+    // Texto personalizado baseado no tempo de antecedência
+    let bodyText = '';
+    if (unidade === 'minutos') {
+      bodyText = `${compromisso.titulo} começará em ${tempo} ${tempo === 1 ? 'minuto' : 'minutos'}`;
+    } else if (unidade === 'horas') {
+      bodyText = `${compromisso.titulo} começará em ${tempo} ${tempo === 1 ? 'hora' : 'horas'}`;
+    } else {
+      if (tempo === 1) {
+        bodyText = `${compromisso.titulo} está agendado para amanhã às ${compromisso.hora}`;
+      } else {
+        bodyText = `${compromisso.titulo} está agendado para ${tempo} dias às ${compromisso.hora}`;
+      }
+    }
+
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Lembrete de Compromisso',
-        body: `${compromisso.titulo} está agendado para amanhã às ${compromisso.hora}`,
-        data: { compromissoId: Date.now().toString() },
+        body: bodyText,
+        data: { 
+          compromissoId: Date.now().toString(),
+          categoria: compromisso.categoria,
+        },
       },
       trigger: notificationTime,
     });
@@ -177,26 +315,53 @@ export function EstudayProvider({ children }: { children: React.ReactNode }) {
     loadData();
   }, []);
 
-  // Salvar dados sempre que o estado mudar
+  // Salvar dados sempre que o estado mudar (exceto loading)
   useEffect(() => {
-    if (!state.loading && (state.compromissos.length > 0 || state.anotacoes.length > 0)) {
+    if (!state.loading) {
       saveData();
     }
-  }, [state.compromissos, state.anotacoes]);
+  }, [state.compromissos, state.anotacoes, state.userProfile, state.loading]);
 
   const loadData = async () => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
       
-      const [compromissosData, anotacoesData] = await Promise.all([
+      const [compromissosData, anotacoesData, userProfileData] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.COMPROMISSOS),
         AsyncStorage.getItem(STORAGE_KEYS.ANOTACOES),
+        AsyncStorage.getItem(STORAGE_KEYS.USER_PROFILE),
       ]);
 
       const compromissos = compromissosData ? JSON.parse(compromissosData) : [];
       const anotacoes = anotacoesData ? JSON.parse(anotacoesData) : [];
+      const userProfile = userProfileData ? JSON.parse(userProfileData) : { 
+        nome: 'Estudante', 
+        fotoUri: undefined,
+        isCustomized: false 
+      };
 
-      dispatch({ type: 'LOAD_DATA', payload: { compromissos, anotacoes } });
+      // Migrar dados antigos se não tiverem a propriedade isCustomized
+      if (userProfile.isCustomized === undefined) {
+        userProfile.isCustomized = (userProfile.nome !== 'Estudante') || !!userProfile.fotoUri;
+      }
+
+      // Migrar compromissos antigos sem configuração de notificação
+      const compromissosMigrados = compromissos.map((c: any) => {
+        // Se não tem nenhuma configuração, criar configuração padrão desabilitada
+        if (!c.notificationConfig && !c.multipleNotificationConfig) {
+          return {
+            ...c,
+            notificationConfig: {
+              enabled: false,
+              tempo: 1,
+              unidade: 'dias'
+            }
+          };
+        }
+        return c;
+      });
+
+      dispatch({ type: 'LOAD_DATA', payload: { compromissos: compromissosMigrados, anotacoes, userProfile } });
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
       dispatch({ type: 'SET_LOADING', payload: false });
@@ -208,33 +373,62 @@ export function EstudayProvider({ children }: { children: React.ReactNode }) {
       await Promise.all([
         AsyncStorage.setItem(STORAGE_KEYS.COMPROMISSOS, JSON.stringify(state.compromissos)),
         AsyncStorage.setItem(STORAGE_KEYS.ANOTACOES, JSON.stringify(state.anotacoes)),
+        AsyncStorage.setItem(STORAGE_KEYS.USER_PROFILE, JSON.stringify(state.userProfile)),
       ]);
+      console.log('Dados salvos com sucesso'); // Debug
     } catch (error) {
       console.error('Erro ao salvar dados:', error);
     }
   };
 
   const addCompromisso = async (compromisso: Omit<Compromisso, 'id'>) => {
-    const notificationId = await scheduleNotification(compromisso);
-    const novoCompromisso: Compromisso = {
-      ...compromisso,
-      id: Date.now().toString(),
-      notificationId,
-    };
-    dispatch({ type: 'ADD_COMPROMISSO', payload: novoCompromisso });
+    try {
+      // Validar estrutura de dados antes de salvar
+      if (!compromisso.titulo || !compromisso.data || !compromisso.hora) {
+        throw new Error('Dados obrigatórios faltando');
+      }
+
+      // Se não tem nenhuma configuração de notificação, usar padrão desabilitado
+      let compromissoFinal = { ...compromisso };
+      
+      if (!compromisso.notificationConfig && !compromisso.multipleNotificationConfig) {
+        compromissoFinal.notificationConfig = {
+          enabled: false,
+          tempo: 1,
+          unidade: 'dias' as const
+        };
+      }
+
+      const notificationId = await scheduleNotification(compromissoFinal);
+      const novoCompromisso: Compromisso = {
+        ...compromissoFinal,
+        id: Date.now().toString(),
+        notificationId,
+      };
+
+      dispatch({ type: 'ADD_COMPROMISSO', payload: novoCompromisso });
+    } catch (error) {
+      console.error('Erro ao adicionar compromisso:', error);
+      throw error;
+    }
   };
 
   const updateCompromisso = async (compromisso: Compromisso) => {
-    // Cancelar notificação anterior se existir
-    if (compromisso.notificationId) {
-      await cancelNotification(compromisso.notificationId);
-    }
+    try {
+      // Cancelar notificação anterior se existir
+      if (compromisso.notificationId) {
+        await cancelNotification(compromisso.notificationId);
+      }
 
-    // Agendar nova notificação
-    const notificationId = await scheduleNotification(compromisso);
-    const compromissoAtualizado = { ...compromisso, notificationId };
-    
-    dispatch({ type: 'UPDATE_COMPROMISSO', payload: compromissoAtualizado });
+      // Agendar nova notificação
+      const notificationId = await scheduleNotification(compromisso);
+      const compromissoAtualizado = { ...compromisso, notificationId };
+      
+      dispatch({ type: 'UPDATE_COMPROMISSO', payload: compromissoAtualizado });
+    } catch (error) {
+      console.error('Erro ao atualizar compromisso:', error);
+      throw error;
+    }
   };
 
   const deleteCompromisso = async (id: string) => {
@@ -261,6 +455,11 @@ export function EstudayProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'DELETE_ANOTACAO', payload: id });
   };
 
+  const updateProfile = async (profile: UserProfile) => {
+    console.log('Atualizando perfil:', profile); // Debug
+    dispatch({ type: 'UPDATE_PROFILE', payload: profile });
+  };
+
   const getAnotacoesPorData = (data: string): AnotacaoCalendario[] => {
     return state.anotacoes.filter(anotacao => anotacao.data === data);
   };
@@ -280,6 +479,7 @@ export function EstudayProvider({ children }: { children: React.ReactNode }) {
         addAnotacao,
         updateAnotacao,
         deleteAnotacao,
+        updateProfile,
         getAnotacoesPorData,
         getCompromissosPorData,
       }}

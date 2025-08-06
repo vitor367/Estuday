@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Chrome as Home, Calendar, Clock, User } from 'lucide-react-native';
+import { Chrome as Home, Calendar, Clock, FileText, User } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -46,6 +46,15 @@ export default function TabLayout() {
           title: 'Compromissos',
           tabBarIcon: ({ size, color }) => (
             <Clock size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="anotacoes"
+        options={{
+          title: 'Anotações',
+          tabBarIcon: ({ size, color }) => (
+            <FileText size={size} color={color} />
           ),
         }}
       />

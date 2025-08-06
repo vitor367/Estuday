@@ -9,9 +9,13 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { X, Plus, CreditCard as Edit3, Trash2, Clock, Calendar } from 'lucide-react-native';
+import { X, Plus, Edit3, Trash2, Calendar } from 'lucide-react-native';
 import { useEstuday, Compromisso, AnotacaoCalendario } from '@/contexts/StudayContext';
 import { formatDateBR } from '@/utils/dateUtils';
+import { useRouter } from 'expo-router';
+import { CompromissoCard } from '@/components/CompromissoCard/CompromissoCard';
+import { AnotacaoCard } from '@/components/AnotacaoCard/AnotacaoCard';
+import { colors } from '@/components/theme/colors';
 
 interface DayModalProps {
   visible: boolean;
@@ -20,19 +24,25 @@ interface DayModalProps {
 }
 
 export function DayModal({ visible, date, onClose }: DayModalProps) {
-  const { getAnotacoesPorData, getCompromissosPorData, addAnotacao, updateAnotacao, deleteAnotacao } = useEstuday();
+  const router = useRouter();
+  const { state, getAnotacoesPorData, getCompromissosPorData, addAnotacao, updateAnotacao, deleteAnotacao } = useEstuday();
   const [anotacoes, setAnotacoes] = useState<AnotacaoCalendario[]>([]);
   const [compromissos, setCompromissos] = useState<Compromisso[]>([]);
   const [novaAnotacao, setNovaAnotacao] = useState('');
   const [editandoAnotacao, setEditandoAnotacao] = useState<string | null>(null);
   const [textoEdicao, setTextoEdicao] = useState('');
 
+  // Atualizar dados quando o modal está visível, a data muda OU quando o estado global muda
   useEffect(() => {
     if (visible && date) {
-      setAnotacoes(getAnotacoesPorData(date));
-      setCompromissos(getCompromissosPorData(date));
+      const anotacoesAtualizadas = getAnotacoesPorData(date);
+      const todosCompromissos = getCompromissosPorData(date);
+      const compromissosAtivos = todosCompromissos.filter(compromisso => !compromisso.concluido);
+      
+      setAnotacoes(anotacoesAtualizadas);
+      setCompromissos(compromissosAtivos);
     }
-  }, [visible, date]);
+  }, [visible, date, state.anotacoes, state.compromissos]); // Adicionadas as dependências do estado global
 
   const handleAddAnotacao = async () => {
     if (novaAnotacao.trim()) {
@@ -41,7 +51,7 @@ export function DayModal({ visible, date, onClose }: DayModalProps) {
         texto: novaAnotacao.trim(),
       });
       setNovaAnotacao('');
-      setAnotacoes(getAnotacoesPorData(date));
+      // Não precisa mais atualizar manualmente, o useEffect vai fazer isso automaticamente
     }
   };
 
@@ -60,7 +70,7 @@ export function DayModal({ visible, date, onClose }: DayModalProps) {
         });
         setEditandoAnotacao(null);
         setTextoEdicao('');
-        setAnotacoes(getAnotacoesPorData(date));
+        // Não precisa mais atualizar manualmente, o useEffect vai fazer isso automaticamente
       }
     }
   };
@@ -70,7 +80,7 @@ export function DayModal({ visible, date, onClose }: DayModalProps) {
     setTextoEdicao('');
   };
 
-  const handleDeleteAnotacao = (id: string) => {
+  const handleDeleteAnotacao = (anotacao: AnotacaoCalendario) => {
     Alert.alert(
       'Confirmar exclusão',
       'Tem certeza que deseja excluir esta anotação?',
@@ -80,12 +90,18 @@ export function DayModal({ visible, date, onClose }: DayModalProps) {
           text: 'Excluir',
           style: 'destructive',
           onPress: async () => {
-            await deleteAnotacao(id);
-            setAnotacoes(getAnotacoesPorData(date));
+            await deleteAnotacao(anotacao.id);
+            // Não precisa mais atualizar manualmente, o useEffect vai fazer isso automaticamente
           },
         },
       ]
     );
+  };
+
+  // Função para navegar ao clicar no compromisso
+  const handleCompromissoPress = (compromisso: Compromisso) => {
+    onClose(); // Fechar o modal primeiro
+    router.push('/compromissos'); // Navegar para a aba de compromissos
   };
 
   return (
@@ -94,13 +110,13 @@ export function DayModal({ visible, date, onClose }: DayModalProps) {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
-            <Calendar size={24} color="#3B82F6" />
+            <Calendar size={24} color={colors.primary} />
             <Text style={styles.headerTitle}>
               {formatDateBR(date)}
             </Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <X size={24} color="#64748B" />
+            <X size={24} color={colors.text.secondary} />
           </TouchableOpacity>
         </View>
 
@@ -110,18 +126,15 @@ export function DayModal({ visible, date, onClose }: DayModalProps) {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Compromissos</Text>
               {compromissos.map((compromisso) => (
-                <View key={compromisso.id} style={styles.compromissoItem}>
-                  <View style={styles.compromissoHeader}>
-                    <Text style={styles.compromissoTitulo}>{compromisso.titulo}</Text>
-                    <View style={styles.compromissoTime}>
-                      <Clock size={14} color="#64748B" />
-                      <Text style={styles.compromissoHora}>{compromisso.hora}</Text>
-                    </View>
-                  </View>
-                  {compromisso.descricao && (
-                    <Text style={styles.compromissoDescricao}>{compromisso.descricao}</Text>
-                  )}
-                </View>
+                <CompromissoCard
+                  key={compromisso.id}
+                  compromisso={compromisso}
+                  onEdit={() => handleCompromissoPress(compromisso)}
+                  onDelete={() => handleCompromissoPress(compromisso)}
+                  onToggleComplete={() => handleCompromissoPress(compromisso)}
+                  variant="compromisso-modal"
+                  onPress={() => handleCompromissoPress(compromisso)}
+                />
               ))}
             </View>
           )}
@@ -138,13 +151,17 @@ export function DayModal({ visible, date, onClose }: DayModalProps) {
                 value={novaAnotacao}
                 onChangeText={setNovaAnotacao}
                 multiline
+                placeholderTextColor={colors.text.tertiary}
               />
               <TouchableOpacity
                 onPress={handleAddAnotacao}
-                style={styles.addButton}
+                style={[
+                  styles.addButton,
+                  !novaAnotacao.trim() && styles.addButtonDisabled
+                ]}
                 disabled={!novaAnotacao.trim()}
               >
-                <Plus size={20} color={novaAnotacao.trim() ? "#fff" : "#64748B"} />
+                <Plus size={20} color={novaAnotacao.trim() ? colors.text.white : colors.text.tertiary} />
               </TouchableOpacity>
             </View>
 
@@ -159,6 +176,7 @@ export function DayModal({ visible, date, onClose }: DayModalProps) {
                       onChangeText={setTextoEdicao}
                       multiline
                       autoFocus
+                      placeholderTextColor={colors.text.tertiary}
                     />
                     <View style={styles.editActions}>
                       <TouchableOpacity onPress={handleSaveEdit} style={styles.saveButton}>
@@ -177,13 +195,13 @@ export function DayModal({ visible, date, onClose }: DayModalProps) {
                         onPress={() => handleEditAnotacao(anotacao)}
                         style={styles.actionButton}
                       >
-                        <Edit3 size={16} color="#3B82F6" />
+                        <Edit3 size={16} color={colors.primary} />
                       </TouchableOpacity>
                       <TouchableOpacity
-                        onPress={() => handleDeleteAnotacao(anotacao.id)}
+                        onPress={() => handleDeleteAnotacao(anotacao)}
                         style={styles.actionButton}
                       >
-                        <Trash2 size={16} color="#EF4444" />
+                        <Trash2 size={16} color={colors.danger} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -204,7 +222,7 @@ export function DayModal({ visible, date, onClose }: DayModalProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background.primary,
   },
   header: {
     flexDirection: 'row',
@@ -213,7 +231,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: colors.border.light,
   },
   headerContent: {
     flexDirection: 'row',
@@ -223,12 +241,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#1E293B',
+    color: colors.text.primary,
   },
   closeButton: {
     padding: 8,
     borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.background.tertiary,
   },
   content: {
     flex: 1,
@@ -240,42 +258,8 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1E293B',
+    color: colors.text.primary,
     marginBottom: 12,
-  },
-  compromissoItem: {
-    backgroundColor: '#F8FAFC',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: '#3B82F6',
-  },
-  compromissoHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  compromissoTitulo: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1E293B',
-    flex: 1,
-  },
-  compromissoTime: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  compromissoHora: {
-    fontSize: 14,
-    color: '#64748B',
-  },
-  compromissoDescricao: {
-    fontSize: 14,
-    color: '#64748B',
-    marginTop: 4,
   },
   addAnotacaoContainer: {
     flexDirection: 'row',
@@ -286,21 +270,26 @@ const styles = StyleSheet.create({
   addAnotacaoInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border.light,
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
     maxHeight: 100,
+    color: colors.text.primary,
+    backgroundColor: colors.background.primary,
   },
   addButton: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: colors.primary,
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  addButtonDisabled: {
+    backgroundColor: colors.border.light,
+  },
   anotacaoItem: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background.secondary,
     padding: 16,
     borderRadius: 12,
     marginBottom: 8,
@@ -313,7 +302,7 @@ const styles = StyleSheet.create({
   anotacaoTexto: {
     flex: 1,
     fontSize: 16,
-    color: '#1E293B',
+    color: colors.text.primary,
     lineHeight: 20,
   },
   anotacaoActions: {
@@ -329,39 +318,41 @@ const styles = StyleSheet.create({
   },
   editInput: {
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: colors.border.light,
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
     maxHeight: 100,
+    color: colors.text.primary,
+    backgroundColor: colors.background.primary,
   },
   editActions: {
     flexDirection: 'row',
     gap: 8,
   },
   saveButton: {
-    backgroundColor: '#10B981',
+    backgroundColor: colors.success,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 6,
   },
   saveButtonText: {
-    color: '#fff',
+    color: colors.text.white,
     fontWeight: '600',
   },
   cancelButton: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.background.tertiary,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 6,
   },
   cancelButtonText: {
-    color: '#64748B',
+    color: colors.text.secondary,
     fontWeight: '600',
   },
   emptyText: {
     fontSize: 16,
-    color: '#64748B',
+    color: colors.text.secondary,
     textAlign: 'center',
     fontStyle: 'italic',
     padding: 20,
