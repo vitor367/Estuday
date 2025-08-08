@@ -1,4 +1,3 @@
-cat > .github/workflows/deploy.yml << 'EOF'
 name: Deploy Expo Web to GitHub Pages
 
 on:
@@ -29,9 +28,11 @@ jobs:
       
     - name: Build for web
       run: npx expo export --platform web
-      
+        
     - name: Setup Pages
       uses: actions/configure-pages@v4
+      with:
+        enablement: true
       
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
@@ -41,4 +42,3 @@ jobs:
     - name: Deploy to GitHub Pages
       id: deployment
       uses: actions/deploy-pages@v4
-EOFcat package.json | grep -A 10 '"scripts"'
