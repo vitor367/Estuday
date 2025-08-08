@@ -1,16 +1,17 @@
 {
   "name": "estuday-app",
-  "homepage": "https://vitor367.github.io/Estuday",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "predeploy": "expo export --platform web",
-    "deploy": "gh-pages -d dist",
     "dev": "EXPO_NO_TELEMETRY=1 expo start",
-    "build:web": "expo export --platform web",
+    "build:web": "expo export --platform web --output-dir dist",
     "lint": "expo lint",
-    "deploy-github": "npm run predeploy && npm run deploy"
+    "preview:web": "npx serve dist -s",
+    "deploy:setup": "echo \"Configuração GitHub Pages completa! Faça commit e push.\"",
+    "debug:web": "expo start --web --dev-client",
+    "build:analyze": "expo export --platform web --output-dir dist && npx serve dist",
+    "clean:build": "rm -rf dist .expo"
   },
   "dependencies": {
     "@expo/config-plugins": "~10.1.1",

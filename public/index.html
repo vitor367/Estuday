@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+  
+  <title>Estuday</title>
+  <meta name="description" content="Aplicativo de estudos Estuday" />
+  
+  <!-- Preload critical resources -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  
+  <!-- SPA Routing Fix -->
+  <script type="text/javascript">
+    // GitHub Pages SPA redirect handling
+    (function(l) {
+      if (l.search[1] === '/') {
+        var decoded = decodeURIComponent(l.search.slice(1));
+        l.replace(l.pathname + decoded + l.hash);
+      }
+    }(window.location));
+  </script>
+  
+  <style>
+    /* Loading spinner */
+    #loading {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 9999;
+    }
+    
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <noscript>Você precisa habilitar o JavaScript para executar este aplicativo.</noscript>
+  
+  <div id="loading">
+    <div class="spinner"></div>
+  </div>
+  
+  <div id="root"></div>
+  
+  <script>
+    // Remove loading spinner when app loads
+    window.addEventListener('load', function() {
+      const loading = document.getElementById('loading');
+      if (loading) {
+        loading.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>
