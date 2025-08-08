@@ -1,21 +1,121 @@
-name: Deploy
-on: [push]
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
 permissions:
- pages: write
- id-token: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
- deploy:
-   runs-on: ubuntu-latest
-   steps:
-     - uses: actions/checkout@v4
-     - uses: actions/setup-node@v4
-       with:
-         node-version: '18'
-         cache: 'npm'
-     - run: npm ci
-     - run: npx expo export --platform web --output-dir dist
-     - run: cp dist/index.html dist/404.html
-     - uses: actions/upload-pages-artifact@v3
-       with:
-         path: dist
-     - uses: actions/deploy-pages@v4
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and Fix Paths
+        run: |
+          # Build the app
+          npx expo export --platform web --output-dir dist
+          
+          # Fix all HTML files
+          for file in dist/*.html dist/**/*.html; do
+            if [ -f "$file" ]; then
+              # Fix asset references
+              sed -i 's|href="/\([^"]*\)|href="/Estuday/\1|g' "$file"
+              sed -i 's|src="/\([^"]*\)|src="/Estuday/\1|g' "$file"
+              
+              # Fix specific _expo references
+              sed -i 's|href="/Estuday/_expo|href="/Estuday/_expo|g' "$file"
+              sed -i 's|src="/Estuday/_expo|src="/Estuday/_expo|g' "$file"
+              
+              # Fix double slashes that might occur
+              sed -i 's|/Estuday//|/Estuday/|g' "$file"
+            fi
+          done
+          
+          # Fix JavaScript files
+          for file in dist/_expo/static/js/**/*.js; do
+            if [ -f "$file" ]; then
+              sed -i 's|"/_expo|"/Estuday/_expo|g' "$file"
+              sed -i 's|"/_expo|"/Estuday/_expo|g' "$file"
+            fi
+          done
+          
+          # Create 404.html for SPA routing
+          cat > dist/404.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="utf-8">
+              <title>Estuday - Redirecting...</title>
+              <script type="text/javascript">
+                // GitHub Pages SPA redirect
+                var pathSegmentsToKeep = 1;
+                var l = window.location;
+                var redirect = l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+                  l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
+                  l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
+                  (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+                  l.hash;
+                l.replace(redirect);
+              </script>
+            </head>
+            <body>
+              <p>Redirecting...</p>
+            </body>
+          </html>
+          EOF
+          
+          # Add SPA redirect script to index.html
+          sed -i 's|</head>|  <script type="text/javascript">\
+            (function(l) {\
+              if (l.search[1] === "/" ) {\
+                var decoded = l.search.slice(1).split("&").map(function(s) {\
+                  return s.replace(/~and~/g, "&");\
+                }).join("?");\
+                window.history.replaceState(null, null,\
+                  l.pathname.slice(0, -1) + decoded + l.hash\
+                );\
+              }\
+            }(window.location));\
+          </script>\
+          </head>|' dist/index.html
+          
+          # List final structure for debugging
+          echo "Final dist structure:"
+          find dist -type f -name "*.html" | head -10
+          echo "Checking index.html for correct paths:"
+          grep -n "href=\|src=" dist/index.html | head -5
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
