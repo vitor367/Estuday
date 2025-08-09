@@ -29,7 +29,7 @@
       "output": "static",
       "publicPath": "/Estuday/",
       "router": {
-        "origin": "hash"
+        "origin": "static"
       }
     }
   }
