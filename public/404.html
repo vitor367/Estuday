@@ -4,17 +4,16 @@
     <meta charset="utf-8">
     <title>Estuday</title>
     <script type="text/javascript">
-      var pathSegmentsToKeep = 1;
+      // Mantém até "/Estuday" no caminho
+      var pathSegmentsToKeep = 2; 
       var l = window.location;
-      l.replace(
-        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-        l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
-        l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
+      var redirect = l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+        l.pathname.split('/').slice(0, pathSegmentsToKeep).join('/') + '/?/' +
+        l.pathname.split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
         (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
-        l.hash
-      );
+        l.hash;
+      l.replace(redirect);
     </script>
   </head>
-  <body>
-  </body>
+  <body></body>
 </html>
